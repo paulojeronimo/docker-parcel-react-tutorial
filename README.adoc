@@ -1,0 +1,241 @@
+= Create React App (with Docker and Parcel) Tutorial
+Paulo Jerônimo <paulojeronimo@gmail.com>; {localdatetime}
+:toc: left
+:numbered:
+:icons: font
+:nofooter:
+:experimental:
+
+:uri-docker: https://docker.com
+:uri-parcel: https://github.com/parcel-bundler/parcel
+:uri-create-react-app: https://reactjs.org/docs/create-a-new-react-app.html
+:uri-install: https://github.com/paulojeronimo/docker-node-shell-functions/blob/master/install.sh
+:uri-docker-parcel-react-demo: https://github.com/paulojeronimo/docker-parcel-react-demo
+
+== Introduction
+
+This is a simple tutorial demonstrating how we can use
+{uri-docker}[Docker^] and {uri-parcel}[Parcel^] to create a React
+application from scratch.
+So, you will not have to use
+{uri-create-react-app}[create-react-app^] (I like and use it. But, in
+this tutorial, I will show you another way).
+
+Following the steps in this tutorial, you will create a git repository
+like {uri-docker-parcel-react-demo}[docker-parcel-react-demo^].
+
+== Prerequisites
+
+. Some tools installed:
+.. Bash
+.. Git
+.. Docker
+
+[NOTE]
+====
+There is no need to install https://nodejs.org[Node.js^].
+But, in this case, you should wrapper all Node.js binaries (like `node`,
+`npm`, `npx` and `yarn`) into Bash functions that call it through
+https://hub.docker.com/_/node/[Docker Node.js^] like I did in my own
+environment:
+
+----
+$ git clone https://github.com/paulojeronimo/docker-node-shell-functions && cd `basename $_`
+$ source ./install.sh
+----
+
+The script {uri-install}[install.sh^] will make the Node.js binaries
+available in your `PATH`.
+====
+
+== Start a new project (docker-parcel-react-demo)
+
+----
+$ mkdir docker-parcel-react-demo && cd $_
+
+$ cat > README.adoc <<'EOF'
+A simple React app created without the use of `create-react-app`
+and by using Docker and Parcel.
+
+Read more at
+https://github.com/paulojeronimo/docker-parcel-react-tutorial.
+EOF
+
+$ yarn init -y
+
+$ yarn add --dev parcel@next
+
+$ mkdir src && cat > $_/index.html <<'EOF'
+<h1>Hello Parcel!</h1>
+EOF
+----
+
+== Build a docker image
+
+----
+$ cat > Dockerfile <<'EOF'
+FROM node:12
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN yarn install
+COPY . .
+EXPOSE 1234
+CMD [ "yarn", "parcel", "src/index.html" ]
+EOF
+
+$ cat > .dockerignore <<'EOF'
+/*.sh
+/node_modules
+/Dockerfile
+EOF
+----
+
+----
+$ export myusername=paulojeronimo
+----
+
+----
+$ cat > build.sh <<'EOF' && chmod +x build.sh
+set -eou pipefail
+docker build -t $myusername/docker-parcel-react-demo .
+EOF
+----
+
+----
+$ ./build.sh
+----
+
+== Start a new docker container
+
+----
+$ cat > run.sh <<'EOF' && chmod +x run.sh
+set -eou pipefail
+docker run -d -p 3000:1234 $myusername/docker-parcel-react-demo
+EOF
+----
+
+----
+$ ./run.sh > container-id
+----
+
+== Test the app
+
+Open http://localhost:3000
+
+== Stop the docker container
+
+----
+$ docker kill `cat container-id`
+----
+
+== Create the git repository
+
+----
+$ cat > .gitignore <<'EOF'
+/node_modules
+/container-id
+EOF
+
+$ git init
+
+$ git add -A
+
+$ git commit -m 'Initial commit'
+----
+
+== Enter the development mode
+
+----
+$ cat > src/index.html <<'EOF'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>My First Parcel App</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" async></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+EOF
+
+$ cat > src/styles.css <<'EOF'
+h1 {
+  color: red;
+  font-family: cursive;
+}
+EOF
+
+$ cat > src/app.js <<'EOF'
+import ReactDOM from 'react-dom'
+import React from 'react'
+import name from './whoami'
+
+function App() {
+  return <h1>Hello, {name}!</h1>
+}
+
+ReactDOM.render(<App />, document.getElementById('app'))
+EOF
+
+$ cat > src/whoami.js <<EOF
+export default "$myusername"
+EOF
+----
+
+----
+$ cat > dev.sh <<'EOF' && chmod +x dev.sh
+#!/usr/bin/env bash
+set -eou pipefail
+cd `dirname $0`
+docker_image=$myusername/docker-parcel-react-demo
+case "${1:-}" in
+  run)
+    docker run -d -v $PWD:/usr/src/app -p 3000:1234 $docker_image > container-id
+    ;;
+  logs)
+    shift || :
+    docker logs "${1:-}" `cat container-id`
+    ;;
+  *)
+    echo "Usage: $0 <run|logs>"
+esac
+EOF
+----
+
+----
+$ yarn add react react-dom
+----
+
+----
+$ git status
+
+$ git difftool
+----
+
+[subs=macros]
+----
+$ ./dev.sh run
+
+$ ./dev.sh logs -f
+...
+Optimizing index.html...
+Optimizing app.[hash].js...
+✨ Built in 30.86s
+...
+Type kbd:[Ctrl+C] to stop seeing this logs
+----
+
+Open http://localhost:3000 (after saw the message "Built in ...").
+
+----
+$ git status
+
+$ echo -e '/.parcel-cache\n/dist' >> .gitignore
+
+$ git add -A
+
+$ git commit -m 'Added dev.sh script and react support'
+----
